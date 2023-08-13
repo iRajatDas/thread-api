@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
@@ -8,8 +9,9 @@ const { createWriteStream } = require('fs');
 const app = express();
 const PORT = 3000; // You can change this to your desired port
 
-app.use(cors());
 app.use(express.json());
+app.use(cors());
+app.use(helmet());
 
 const MAX_CONCURRENT_DOWNLOADS = 3; // Set the maximum number of concurrent downloads
 const ongoingDownloads = {}; // Object to keep track of ongoing downloads
