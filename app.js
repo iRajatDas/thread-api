@@ -5,9 +5,11 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const { createWriteStream } = require('fs');
+const { join } = require("path");
+const { getAllMedia } = require('./media');
 
 const app = express();
-const PORT = 3000; // You can change this to your desired port
+const PORT = 3001; // You can change this to your desired port
 
 app.use(express.json());
 app.use(cors());
@@ -53,6 +55,57 @@ const downloadVideo = async (url) => {
     throw new Error('An error occurred while downloading the video.');
   }
 };
+
+const downloadMedia = async (media, i = 0) => {
+  i++;
+  if (media.length == 0) return;
+  console.log(`[${i}] Downloading ${media[0].fileName}`);
+  const request = await fetch(media[0].url);
+  const blob = await request.blob();
+  const bos = Buffer.from(await blob.arrayBuffer());
+  fs.writeFileSync(media[0].filePath, bos);
+  media.shift();
+  return await downloadMedia(media, i);
+};
+const prepareMedia = (media, location) => {
+  //   console.log(media);
+  if (media.type == "photo") {
+    media.media = media.media.filter(
+      (m) => m.height == media.height && m.width == media.width
+    );
+  }
+  return media.media.map((m, i) => {
+    let url = m.url;
+    const fileName = media.type.includes("video")
+      ? `video-${i}.mp4`
+      : `original-${i}.jpg`;
+    const filePath = join(location, fileName);
+    return { url, fileName, filePath };
+  });
+};
+
+app.get('/', async (req, res) => {
+
+  // init
+
+  const POST_URL = "https://www.threads.net/t/CugT0dVpUCK"; //double
+  //   const POST_URL = "https://www.threads.net/t/CugTrGrpS84"; //single
+
+  const LOCATION = "download";
+  const date = new Date().getTime();
+
+  if (!fs.existsSync(LOCATION)) fs.mkdirSync(LOCATION);
+  let postData = await getAllMedia(POST_URL);
+  console.log(JSON.stringify(postData, null, 2));
+  //   console.log(postData);
+  // for await (const data of postData) {
+  //   let dirLocation = join(`${LOCATION}`, `${data.user.username}-${date}/`);
+  //   if (!fs.existsSync(dirLocation)) fs.mkdirSync(dirLocation);
+  //   let media = prepareMedia(data, dirLocation);
+  //   await downloadMedia(media);
+  // }
+  res.status(200).json({ status: 'success', data: postData });
+})
 
 app.post('/getVideo', async (req, res) => {
   const { url } = req.body;
