@@ -86,4 +86,4 @@ const getMedia = (thread) => {
   };
 };
 
-module.exports = { getAllMedia };
+module.exports = { getAllMedia, getMedia };
