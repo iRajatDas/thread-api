@@ -5,20 +5,21 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const { createWriteStream } = require('fs');
-const { join } = require("path");
+const { join } = require('path');
 const { getAllMedia } = require('./media');
+const puppeteer = require('puppeteer')
+
 
 const app = express();
-const PORT = 3001; // You can change this to your desired port
+const PORT = 3001;
 
 app.use(express.json());
 app.use(cors());
 app.use(helmet());
 
-const MAX_CONCURRENT_DOWNLOADS = 3; // Set the maximum number of concurrent downloads
-const ongoingDownloads = {}; // Object to keep track of ongoing downloads
+const MAX_CONCURRENT_DOWNLOADS = 3;
+const ongoingDownloads = {};
 
-// Helper function to delete a file after a given time
 const deleteFileAfterTime = (filePath, timeInMilliseconds) => {
   setTimeout(() => {
     try {
@@ -35,9 +36,7 @@ const deleteFileAfterTime = (filePath, timeInMilliseconds) => {
 
 const downloadVideo = async (url) => {
   try {
-    const response = await axios.get(url, {
-      responseType: 'stream',
-    });
+    const response = await axios.get(url, { responseType: 'stream' });
 
     const videoFileName = `Video_(InstaThreadsDown.com)_${Date.now()}.mp4`;
     const videoFilePath = path.join(__dirname, 'videos', videoFileName);
@@ -58,7 +57,7 @@ const downloadVideo = async (url) => {
 
 const downloadMedia = async (media, i = 0) => {
   i++;
-  if (media.length == 0) return;
+  if (media.length === 0) return;
   console.log(`[${i}] Downloading ${media[0].fileName}`);
   const request = await fetch(media[0].url);
   const blob = await request.blob();
@@ -67,45 +66,66 @@ const downloadMedia = async (media, i = 0) => {
   media.shift();
   return await downloadMedia(media, i);
 };
+
 const prepareMedia = (media, location) => {
-  //   console.log(media);
-  if (media.type == "photo") {
+  if (media.type === 'photo') {
     media.media = media.media.filter(
-      (m) => m.height == media.height && m.width == media.width
+      (m) => m.height === media.height && m.width === media.width
     );
   }
+
   return media.media.map((m, i) => {
     let url = m.url;
-    const fileName = media.type.includes("video")
-      ? `video-${i}.mp4`
-      : `original-${i}.jpg`;
+    const fileName = media.type.includes('video') ? `video-${i}.mp4` : `original-${i}.jpg`;
     const filePath = join(location, fileName);
     return { url, fileName, filePath };
   });
 };
 
-app.get('/', async (req, res) => {
+app.get('/api/insta', async (req, res) => {
 
-  // init
 
-  const POST_URL = "https://www.threads.net/t/CugT0dVpUCK"; //double
-  //   const POST_URL = "https://www.threads.net/t/CugTrGrpS84"; //single
+  const { u } = req;
 
-  const LOCATION = "download";
-  const date = new Date().getTime();
+  // const POST_URL = 'https://www.threads.net/t/CugT0dVpUCK';
+  const LOCATION = 'download';
 
   if (!fs.existsSync(LOCATION)) fs.mkdirSync(LOCATION);
-  let postData = await getAllMedia(POST_URL);
-  console.log(JSON.stringify(postData, null, 2));
-  //   console.log(postData);
-  // for await (const data of postData) {
-  //   let dirLocation = join(`${LOCATION}`, `${data.user.username}-${date}/`);
-  //   if (!fs.existsSync(dirLocation)) fs.mkdirSync(dirLocation);
-  //   let media = prepareMedia(data, dirLocation);
-  //   await downloadMedia(media);
-  // }
+  let postData = await getAllMedia(u);
   res.status(200).json({ status: 'success', data: postData });
-})
+});
+
+app.get('/scrape', async (req, res) => {
+  try {
+    const browser = await puppeteer.launch({
+      headless: true, // Change to false if you need to see the browser
+    });
+
+    const page = await browser.newPage();
+
+    await page.goto('https://www.threads.net/t/CugT0dVpUCK', { waitUntil: "networkidle2" });
+
+    const textContent = await page.evaluate(() => {
+      const containingThreadScript = Array.from(document.querySelectorAll(`script:not([src])`))
+        .find(script => script.innerText.includes('containing_thread'));
+
+      return containingThreadScript ? JSON.parse(containingThreadScript.innerText) : null;
+    });
+
+    await browser.close();
+
+    if (textContent) {
+      const threads = textContent.require[0][3][0].__bbox.require[0][3][1].__bbox.result.data.data.containing_thread;
+      res.status(200).json({ status: 'success', data: threads });
+    } else {
+      res.status(404).json({ error: 'Data not found.' });
+    }
+  } catch (error) {
+    console.error('Error scraping content:', error);
+    res.status(500).json({ error: 'An error occurred while scraping content.' });
+  }
+});
+
 
 app.post('/getVideo', async (req, res) => {
   const { url } = req.body;
@@ -115,7 +135,7 @@ app.post('/getVideo', async (req, res) => {
   }
 
   if (ongoingDownloads[url]) {
-    return res.status(200).json({ status: 'pending', message: `Download in Progress` });
+    return res.status(200).json({ status: 'pending', message: 'Download in Progress' });
   }
 
   try {
