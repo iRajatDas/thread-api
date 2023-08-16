@@ -1,27 +1,40 @@
 const express = require("express");
 const { createProxyMiddleware } = require("http-proxy-middleware");
-const url = require("url"); // Import the 'url' module
+const url = require("url");
+const helmet = require("helmet");
 
 const app = express();
+app.use(express.json());
 
-// Define a custom proxy route
+// Enable CORS for all routes
+app.use(helmet({ crossOriginResourcePolicy: false }));
+
 app.use("/:hostname/*", (req, res, next) => {
-  const { hostname } = req.params; // Get the hostname from the URL
+  const { hostname } = req.params;
   const targetUrl = url.format({
-    protocol: "https", // Change this if necessary
+    protocol: "https",
     host: hostname,
-    pathname: req.params[0], // Get the rest of the URL as the pathname
-    query: req.query, // Preserve query parameters if any
+    pathname: req.params[0],
+    query: req.query,
   });
 
-  req.url = ""; // Clear the URL so it's reconstructed based on the target URL
-  req.headers.host = hostname; // Set the host header to match the hostname
+  // Check if the request is for a video file
+  if (req.params[0].endsWith(".mp4")) {
+    // Proxy the video file directly
+    createProxyMiddleware({
+      target: targetUrl,
+      changeOrigin: true,
+    })(req, res, next);
+  } else {
+    // Construct the proxy URL and headers for other requests
+    req.url = "";
+    req.headers.host = hostname;
 
-  // Use http-proxy-middleware with the constructed target URL
-  createProxyMiddleware({
-    target: targetUrl,
-    changeOrigin: true,
-  })(req, res, next);
+    createProxyMiddleware({
+      target: targetUrl,
+      changeOrigin: true,
+    })(req, res, next);
+  }
 });
 
 app.listen(3001, () => {
