@@ -8,6 +8,7 @@ const { createWriteStream } = require("fs");
 const { join } = require("path");
 const { getAllMedia, getMedia } = require("./media");
 const puppeteer = require("puppeteer");
+const proxy = require('pass-cors')
 
 const app = express();
 const PORT = 3001;
@@ -18,17 +19,6 @@ app.use(helmet());
 
 const MAX_CONCURRENT_DOWNLOADS = 3;
 const ongoingDownloads = {};
-
-let browser;
-
-// Launch the browser and keep it running
-(async () => {
-  browser = await puppeteer.launch({
-    headless: true, // Change to true for production
-    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-gpu"],
-    userDataDir: "./data",
-  });
-})();
 
 const deleteFileAfterTime = (filePath, timeInMilliseconds) => {
   setTimeout(() => {
@@ -105,7 +95,23 @@ app.get("/api/insta", async (req, res) => {
   res.status(200).json({ status: "success", data: postData });
 });
 
-app.get("/scrape__", async (req, res) => {
+app.use('/proxy', proxy);  //You can customise the route name
+
+const IS_PRODUCTION = true;
+
+const getBrowser = () =>
+  IS_PRODUCTION
+    ? // Connect to browserless so we don't run Chrome on the same hardware in production
+      puppeteer.connect({
+        browserWSEndpoint:
+          "wss://chrome.browserless.io?token=7d8dd40a-8d68-4d26-bec5-31b7be5353be",
+      })
+    : // Run the browser locally while in development
+      puppeteer.launch();
+
+app.get("/scrape", async (req, res) => {
+  let browser = null;
+
   const { url } = req.query;
   if (!url) {
     res.status(404).json({ error: "Yo!" });
@@ -115,12 +121,7 @@ app.get("/scrape__", async (req, res) => {
   console.log(url);
 
   try {
-    const browser = await puppeteer.launch({
-      headless: false,
-      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-gpu"],
-      userDataDir: "./data",
-    });
-
+    browser = await getBrowser();
     const page = await browser.newPage();
     const iPhone = puppeteer.devices["iPhone 12 Pro"];
     await page.emulate(iPhone);
@@ -135,25 +136,6 @@ app.get("/scrape__", async (req, res) => {
         request.continue();
       }
     });
-
-    await page.setExtraHTTPHeaders({
-      Accept:
-        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-      "Accept-Language": "en-US,en;q=0.9,hi;q=0.8",
-      "Cache-Control": "max-age=0",
-      DPR: "1.8",
-      "Sec-Ch-Prefers-Color-Scheme": "dark",
-      "Sec-Fetch-Dest": "document",
-      "Sec-Fetch-Mode": "navigate",
-      "Sec-Fetch-Site": "same-origin",
-      "Sec-Fetch-User": "?1",
-      "Upgrade-Insecure-Requests": "1",
-      "Viewport-Width": "433",
-    });
-
-    await page.setUserAgent(
-      "Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 Mobile/15E148 Safari/604.1"
-    );
 
     await page.goto(url, {
       waitUntil: "networkidle2",
@@ -190,7 +172,7 @@ app.get("/scrape__", async (req, res) => {
   }
 });
 
-app.get("/scrape", async (req, res) => {
+app.get("/scrape___", async (req, res) => {
   const { url } = req.query;
   if (!url) {
     res.status(400).json({ error: "Missing URL parameter." });
