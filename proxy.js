@@ -2,12 +2,25 @@ const express = require("express");
 const { createProxyMiddleware } = require("http-proxy-middleware");
 const url = require("url");
 const helmet = require("helmet");
+const http = require("http");
 
 const app = express();
 app.use(express.json());
 
-// Enable CORS for all routes
-app.use(helmet({ crossOriginResourcePolicy: false }));
+// Enable CORS for specific origins
+const allowedOrigins = ["localhost", "instathreadsdown.com"];
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+  }
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Origin, X-Requested-With, Content-Type, Accept"
+  );
+  next();
+});
 
 app.use("/:hostname/*", (req, res, next) => {
   const { hostname } = req.params;
@@ -36,6 +49,8 @@ app.use("/:hostname/*", (req, res, next) => {
     })(req, res, next);
   }
 });
+
+http.createServer(app);
 
 app.listen(3001, () => {
   console.log("Proxy server is running on port 3001");
